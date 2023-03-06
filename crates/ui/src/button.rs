@@ -9,7 +9,7 @@ use std::{
 use ambient_core::{runtime, window::WindowCtl, window_ctl};
 use ambient_ecs::World;
 use ambient_element::{element_component, Element, ElementComponent, ElementComponentExt, Hooks};
-use ambient_input::{on_app_focus_change, on_app_keyboard_input, on_app_mouse_input, KeyboardEvent};
+use ambient_input::{event_focus_change, event_keyboard_input, event_mouse_input, KeyboardEvent};
 use ambient_renderer::color;
 use ambient_std::{cb, color::Color, Callback, Cb};
 use closure::closure;
@@ -22,11 +22,12 @@ use winit::{
     window::CursorIcon,
 };
 
-use super::{FlowColumn, FlowRow, Text, UIBase, UIElement, UIExt};
+use super::{FlowColumn, FlowRow, Text, UIBase, UIElement};
 use crate::{
     border_color, border_radius, border_thickness, cutout_color, font_style, layout::*, primary_color, secondary_color, Corners, FontStyle,
     Tooltip,
 };
+use ambient_ui_components::UIExt;
 
 #[derive(Clone, Debug)]
 pub enum ButtonCb {
@@ -143,10 +144,10 @@ impl ButtonStyle {
                     .el()
                     .set(fit_horizontal(), Fit::Parent)
                     .set(height(), 2.)
-                    .with_background(Color::WHITE)
+                    .with_background(Color::WHITE.into())
                     .set(margin(), Borders::top(2.)),
             ])
-            .with_background(background)
+            .with_background(background.into())
         } else {
             let content = content.set(font_style(), FontStyle::Bold);
             let tooltip = if let Some(hotkey) = hotkey {
@@ -171,17 +172,18 @@ impl ButtonStyle {
                     },
                 )
                 .set(align_vertical(), Align::Center)
-                .with_background(background)
+                .with_background(background.into())
                 .set(
                     border_radius(),
                     match self {
                         Self::Card => Corners::even(3.),
                         Self::Flat => Corners::even(3.),
                         _ => Corners::even(26. / 2.),
-                    },
+                    }
+                    .into(),
                 )
                 .set(border_thickness(), 0.)
-                .set(border_color(), Color::WHITE);
+                .set(border_color(), Color::WHITE.into());
             if *self != Self::Flat {
                 el = el.set(min_height(), 26.);
             }
@@ -218,6 +220,27 @@ pub fn Button(
         }
         Box::new(|_| {})
     });
+    hooks.use_world_event({
+        let set_is_pressed = set_is_pressed.clone();
+        let on_invoked = on_invoked.clone();
+        let set_is_working = set_is_working.clone();
+        move |world, event| {
+            if let Some(pressed) = event.get(event_mouse_input()) {
+                if pressed && hover {
+                    set_is_pressed(true);
+                    is_pressed_immediate.store(true, Ordering::SeqCst);
+                }
+                if !pressed {
+                    let is_pressed = is_pressed_immediate.load(Ordering::SeqCst);
+                    if hover && !disabled && is_pressed {
+                        on_invoked.invoke(world, set_is_working.clone());
+                    }
+                    set_is_pressed(false);
+                    is_pressed_immediate.store(false, Ordering::SeqCst);
+                }
+            }
+        }
+    });
 
     let content = style
         .create_container(is_pressed, is_working, disabled, toggled, hover, hotkey, hotkey_modifier, tooltip, content)
@@ -229,23 +252,7 @@ pub fn Button(
             set_hover(false);
             world.resource(window_ctl()).send(WindowCtl::SetCursorIcon(CursorIcon::Default)).ok();
         })
-        .listener(
-            on_app_mouse_input(),
-            Arc::new(closure!(clone set_is_pressed, clone on_invoked, clone set_is_working, |world, _, event| {
-                if event.state == ElementState::Pressed && hover {
-                    set_is_pressed(true);
-                    is_pressed_immediate.store(true, Ordering::SeqCst);
-                }
-                if event.state == ElementState::Released {
-                    let is_pressed = is_pressed_immediate.load(Ordering::SeqCst);
-                    if hover && !disabled && is_pressed {
-                        on_invoked.invoke(world, set_is_working.clone());
-                    }
-                    set_is_pressed(false);
-                    is_pressed_immediate.store(false, Ordering::SeqCst);
-                }
-            })),
-        );
+        .el();
 
     if disabled {
         content
@@ -388,19 +395,10 @@ impl ElementComponent for Hotkey {
     fn render(self: Box<Self>, hooks: &mut Hooks) -> Element {
         let Self { on_is_pressed_changed, content, hotkey, hotkey_modifier, on_invoke } = *self;
         let (is_pressed, _) = hooks.use_state_with(|_| Arc::new(AtomicBool::new(false)));
-        content
-            .listener(
-                on_app_focus_change(),
-                Arc::new({
-                    let is_pressed = is_pressed.clone();
-                    move |_, _, _| {
-                        is_pressed.store(false, Ordering::Relaxed);
-                    }
-                }),
-            )
-            .listener(
-                on_app_keyboard_input(),
-                Arc::new(move |world, _, event| {
+        hooks.use_world_event({
+            let is_pressed = is_pressed;
+            move |world, event| {
+                if let Some(event) = event.get_ref(event_keyboard_input()) {
                     if let KeyboardEvent { keycode: Some(virtual_keycode), state, modifiers, .. } = event {
                         if virtual_keycode == &hotkey {
                             if state == &ElementState::Pressed {
@@ -409,7 +407,6 @@ impl ElementComponent for Hotkey {
                                         on_is_pressed_changed.0(true);
                                     }
                                     is_pressed.store(true, Ordering::Relaxed);
-                                    return true;
                                 }
                             } else {
                                 let pressed = is_pressed.load(Ordering::Relaxed);
@@ -420,13 +417,15 @@ impl ElementComponent for Hotkey {
                                         on_is_pressed_changed.0(false);
                                     }
                                     is_pressed.store(false, Ordering::Relaxed);
-                                    return true;
                                 }
                             }
                         }
                     }
-                    false
-                }),
-            )
+                } else if let Some(_event) = event.get(event_focus_change()) {
+                    is_pressed.store(false, Ordering::Relaxed);
+                }
+            }
+        });
+        content
     }
 }

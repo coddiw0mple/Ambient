@@ -1,35 +1,29 @@
 #[macro_use]
 extern crate lazy_static;
 
-use ambient_sys::{task::RuntimeHandle, time::Instant};
-use std::{
-    sync::Arc,
-    time::{Duration, SystemTime},
-};
+use ambient_sys::{task::RuntimeHandle, time::Instant, time::SystemTime};
+use chrono::{DateTime, Utc};
+use std::{sync::Arc, time::Duration};
 use window::WindowCtl;
 
-use ambient_ecs::{
-    components, query, Debuggable, Description, DynSystem, EntityId, FrameEvent, Name, Networked, QueryState, Resource, Store, System,
-    World,
-};
+use ambient_ecs::{components, query, Debuggable, Description, DynSystem, FrameEvent, Name, Networked, Resource, Store, System, World};
 use ambient_gpu::{gpu::Gpu, mesh_buffer::GpuMesh};
 
-pub mod async_ecs;
-pub mod gpu_ecs;
-pub mod hierarchy;
-pub mod window;
 use ambient_std::{
     asset_cache::{AssetCache, SyncAssetKey},
-    events::EventDispatcher,
     math::interpolate,
 };
 use glam::{uvec2, vec2, UVec2, Vec2};
 pub use paste;
 use serde::{Deserialize, Serialize};
-use winit::{event::Event, window::Window};
+use winit::window::Window;
+pub mod async_ecs;
 pub mod bounding;
 pub mod camera;
+pub mod gpu_ecs;
+pub mod hierarchy;
 pub mod transform;
+pub mod window;
 
 components!("app", {
     @[Debuggable, Networked, Store, Name["Name"], Description["A human-friendly name for this entity."]]
@@ -38,18 +32,17 @@ components!("app", {
     runtime: RuntimeHandle,
     @[Resource]
     gpu: Arc<Gpu>,
+    @[Debuggable]
     mesh: Arc<GpuMesh>,
 
-    @[Resource, Name["Window Control"], Description["Allows controlling the window from afar"]]
+    @[Resource, Name["Window Control"], Description["Allows controlling the window from afar."]]
     window_ctl: flume::Sender<WindowCtl>,
 
-    @[Resource]
+    @[Resource, Name["Window scale factor"], Description["This number is usually 1, but on for instance retina displays it's 2."]]
     window_scale_factor: f64,
-    /// The logical size is the physical size divided by the scale factor
-    @[Resource]
+    @[Resource, Name["Window logical size"], Description["The logical size is the physical size divided by the scale factor."]]
     window_logical_size: UVec2,
-    /// The physical size is the actual number of pixels on the screen
-    @[Resource]
+    @[Resource, Name["Window physical size"], Description["The physical size is the actual number of pixels on the screen."]]
     window_physical_size: UVec2,
     /// Mouse position in screen space
     @[Resource]
@@ -91,7 +84,7 @@ components!("app", {
         Name["Session start time"],
         Description["When the current server session was started."]
     ]
-    session_start: SystemTime,
+    session_start: DateTime<Utc>,
     @[
         Debuggable, Networked, Store,
         Name["Tags"],
@@ -111,12 +104,6 @@ components!("app", {
     frame_index: usize,
     @[Debuggable, Store]
     remove_at_time: Duration,
-
-    on_frame: EventDispatcher<dyn Fn(&mut World, EntityId, f32) + Sync + Send>,
-
-    on_event: EventDispatcher<dyn Fn(&mut World, EntityId, &winit::event::Event<()>) + Sync + Send>,
-    on_window_event: EventDispatcher<dyn Fn(&mut World, EntityId, &winit::event::WindowEvent) + Sync + Send>,
-    on_device_event: EventDispatcher<dyn Fn(&mut World, EntityId, &winit::event::DeviceEvent) + Sync + Send>,
 
     /// Generic component that indicates the entity shouldn't be sent over network
     @[Debuggable, Networked, Store]
@@ -159,55 +146,6 @@ impl SyncAssetKey<RuntimeHandle> for RuntimeKey {}
 pub struct WindowKey;
 #[cfg(not(target_os = "unknown"))]
 impl SyncAssetKey<Arc<Window>> for WindowKey {}
-
-#[derive(Debug)]
-pub struct WinitEventsSystem {
-    event_qs: QueryState,
-    window_event_qs: QueryState,
-    device_event_qs: QueryState,
-}
-impl WinitEventsSystem {
-    pub fn new() -> Self {
-        Self { event_qs: QueryState::new(), window_event_qs: QueryState::new(), device_event_qs: QueryState::new() }
-    }
-}
-impl System<Event<'static, ()>> for WinitEventsSystem {
-    fn run(&mut self, world: &mut World, event: &Event<'static, ()>) {
-        for (id, (dispatcher,)) in query((on_event(),)).collect_cloned(world, Some(&mut self.event_qs)) {
-            for handler in dispatcher.iter() {
-                handler(world, id, event);
-            }
-        }
-        match event {
-            Event::WindowEvent { event, .. } => {
-                for (id, (dispatcher,)) in query((on_window_event(),)).collect_cloned(world, Some(&mut self.window_event_qs)) {
-                    for handler in dispatcher.iter() {
-                        handler(world, id, event);
-                    }
-                }
-            }
-            Event::DeviceEvent { ref event, .. } => {
-                for (id, (dispatcher,)) in query((on_device_event(),)).collect_cloned(world, Some(&mut self.device_event_qs)) {
-                    for handler in dispatcher.iter() {
-                        handler(world, id, event);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-pub fn on_frame_system() -> DynSystem {
-    query((on_frame(),)).to_system(|q, world, qs, _| {
-        let dtime = *world.resource(self::dtime());
-        for (id, (on_frame,)) in q.collect_cloned(world, qs) {
-            for handler in on_frame.iter() {
-                handler(world, id, dtime);
-            }
-        }
-    })
-}
 
 pub fn remove_at_time_system() -> DynSystem {
     query((remove_at_time(),)).to_system(|q, world, qs, _| {

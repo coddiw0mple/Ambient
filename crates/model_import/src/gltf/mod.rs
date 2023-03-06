@@ -2,14 +2,11 @@ use std::sync::Arc;
 
 use ambient_animation::{animation_bind_id_from_name, AnimationClip, AnimationOutputs, AnimationTarget, AnimationTrack};
 use ambient_core::{
-    bounding::local_bounding_aabb,
-    hierarchy::{children, parent},
-    name,
-    transform::{local_to_parent, local_to_world, rotation, scale, translation},
+    bounding::local_bounding_aabb, hierarchy::{children, parent}, name, transform::{local_to_parent, local_to_world, rotation, scale, translation}
 };
-use ambient_ecs::{EntityData, World};
+use ambient_ecs::{Entity, World};
 use ambient_model::{model_skin_ix, model_skins, pbr_renderer_primitives_from_url, Model, ModelSkin, PbrRenderPrimitiveFromUrl};
-use ambient_renderer::materials::pbr_material::PbrMaterialFromUrl;
+use ambient_renderer::materials::pbr_material::PbrMaterialDesc;
 use ambient_std::{asset_cache::AssetCache, asset_url::AbsAssetUrl, mesh::Mesh, shapes::AABB};
 use glam::{uvec4, Mat4, Quat, UVec4, Vec2, Vec3, Vec4, Vec4Swizzles};
 use gltf::animation::util::ReadOutputs;
@@ -77,7 +74,6 @@ pub async fn import(import: &GltfImport, asset_crate: &mut ModelCrate) -> anyhow
     for (index, animation) in import.document.animations().into_iter().enumerate() {
         let tracks = animation
             .channels()
-            .into_iter()
             .map(|channel| {
                 let reader = channel.reader(|buffer| Some(&import.buffers[buffer.index()]));
                 let target = AnimationTarget::BinderId(animation_bind_id_from_name(channel.target().node().name().unwrap_or("")));
@@ -179,7 +175,7 @@ pub async fn import(import: &GltfImport, asset_crate: &mut ModelCrate) -> anyhow
     for (index, mat) in import.document.materials().enumerate() {
         let pbr = mat.pbr_metallic_roughness();
 
-        let mat_def = PbrMaterialFromUrl {
+        let mat_def = PbrMaterialDesc {
             name: mat.name().map(|x| x.to_string()),
             source: Some(import.name.clone()),
             base_color_factor: Some(glam::Vec4::from_slice(&mat.pbr_metallic_roughness().base_color_factor())),
@@ -207,14 +203,14 @@ pub async fn import(import: &GltfImport, asset_crate: &mut ModelCrate) -> anyhow
         .map(|node| {
             let (trans, rot, scal) = node.transform().decomposed();
 
-            let mut ed = EntityData::new()
-                .set(translation(), Vec3::from_slice(&trans))
-                .set(rotation(), Quat::from_slice(&rot))
-                .set(scale(), Vec3::from_slice(&scal))
-                .set_default(local_to_world());
+            let mut ed = Entity::new()
+                .with(translation(), Vec3::from_slice(&trans))
+                .with(rotation(), Quat::from_slice(&rot))
+                .with(scale(), Vec3::from_slice(&scal))
+                .with_default(local_to_world());
 
             if let Some(node_name) = node.name() {
-                ed.set_self(name(), node_name.to_string());
+                ed.set(name(), node_name.to_string());
             }
 
             if let Some(mesh_) = node.mesh() {
@@ -226,7 +222,7 @@ pub async fn import(import: &GltfImport, asset_crate: &mut ModelCrate) -> anyhow
                         lod: 0,
                     })
                     .collect_vec();
-                ed.set_self(pbr_renderer_primitives_from_url(), primitive_defs);
+                ed.set(pbr_renderer_primitives_from_url(), primitive_defs);
 
                 let aabbs = mesh_
                     .primitives()
@@ -236,12 +232,12 @@ pub async fn import(import: &GltfImport, asset_crate: &mut ModelCrate) -> anyhow
                     })
                     .collect_vec();
                 if let Some(aabb) = AABB::unions(&aabbs) {
-                    ed.set_self(local_bounding_aabb(), aabb);
+                    ed.set(local_bounding_aabb(), aabb);
                 }
             }
 
             if let Some(skin) = node.skin() {
-                ed.set_self(model_skin_ix(), skin.index());
+                ed.set(model_skin_ix(), skin.index());
             }
 
             ed.spawn(&mut world)

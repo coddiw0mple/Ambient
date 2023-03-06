@@ -74,15 +74,19 @@ impl ExamplesRender {
         world.add_component(world.resource_entity(), renderer_stats(), "".to_string()).unwrap();
         let wind_size = *world.resource(ambient_core::window_physical_size());
 
+        tracing::debug!("Creating render target");
         let render_target = RenderTarget::new(gpu.clone(), wind_size, None);
 
+        tracing::debug!("Creating self");
         Self {
             main: if main {
+                tracing::debug!("Creating renderer");
                 let mut renderer = Renderer::new(
                     world,
                     world.resource(asset_cache()).clone(),
                     RendererConfig { scene: main_scene(), shadows: true, ..Default::default() },
                 );
+                tracing::debug!("Creating gizmo renderer");
                 renderer.post_transparent = Some(Box::new(GizmoRenderer::new(&assets)));
                 Some(renderer)
             } else {
@@ -166,21 +170,29 @@ impl System for ExamplesRender {
                 if self.main.is_some() { None } else { Some(app_background_color()) },
             );
         }
-        let frame = {
-            profiling::scope!("Get swapchain texture");
-            self.gpu.surface.as_ref().unwrap().get_current_texture().expect("Failed to acquire next swap chain texture")
-        };
-        let frame_view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.blit.run(&mut encoder, &self.render_target.color_buffer_view, &frame_view);
+        if let Some(surface) = &self.gpu.surface {
+            let frame = {
+                profiling::scope!("Get swapchain texture");
+                surface.get_current_texture().expect("Failed to acquire next swap chain texture")
+            };
+            let frame_view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+            self.blit.run(&mut encoder, &self.render_target.color_buffer_view, &frame_view);
 
-        {
-            profiling::scope!("Submit");
-            self.gpu.queue.submit(Some(encoder.finish()));
+            {
+                profiling::scope!("Submit");
+                self.gpu.queue.submit(Some(encoder.finish()));
+            }
+            {
+                profiling::scope!("Present");
+                frame.present();
+            }
+        } else {
+            {
+                profiling::scope!("Submit");
+                self.gpu.queue.submit(Some(encoder.finish()));
+            }
         }
-        {
-            profiling::scope!("Present");
-            frame.present();
-        }
+
         for action in post_submit.into_iter() {
             action();
         }

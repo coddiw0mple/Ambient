@@ -1,17 +1,15 @@
-use std::sync::Arc;
-
 use ambient_core::transform::translation;
 use ambient_element::{element_component, Element, ElementComponentExt, Hooks};
-use ambient_input::picking::{on_mouse_enter, on_mouse_leave};
 use closure::closure;
 use glam::vec3;
 
-use super::{FlowColumn, UIBase, UIExt};
+use super::{FlowColumn, UIBase};
 use crate::{
     border_radius,
     layout::{margin, Borders},
     padding, tooltip_background_color, Corners, SMALL_ROUNDING, STREET,
 };
+use ambient_ui_components::UIExt;
 
 #[element_component]
 pub fn Dropdown(_: &mut Hooks, content: Element, dropdown: Element, show: bool) -> Element {
@@ -33,13 +31,14 @@ pub fn Tooltip(hooks: &mut Hooks, inner: Element, tooltip: Element) -> Element {
         dropdown: FlowColumn(vec![tooltip])
             .el()
             .set(padding(), Borders::even(STREET))
-            .with_background(tooltip_background_color())
-            .set(border_radius(), Corners::even(SMALL_ROUNDING))
+            .with_background(tooltip_background_color().into())
+            .set(border_radius(), Corners::even(SMALL_ROUNDING).into())
             .set(margin(), Borders::top(STREET)),
         show: hover,
     }
     .el()
     .with_clickarea()
-    .listener(on_mouse_enter(), Arc::new(closure!(clone set_hover, |_, _| set_hover(true))))
-    .listener(on_mouse_leave(), Arc::new(move |_, _| set_hover(false)))
+    .on_mouse_enter(closure!(clone set_hover, |_, _| set_hover(true)))
+    .on_mouse_leave(move |_, _| set_hover(false))
+    .el()
 }

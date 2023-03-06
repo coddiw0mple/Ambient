@@ -1,11 +1,8 @@
 use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
+    atomic::{AtomicU32, Ordering}, Arc
 };
 
-use ambient_ecs::{
-    components, query, query_mut, ArchetypeFilter, ComponentEntry, EntityData, EntityId, FrameEvent, Query, QueryState, World,
-};
+use ambient_ecs::{components, query, query_mut, ArchetypeFilter, ComponentEntry, Entity, EntityId, FrameEvent, Query, QueryState, World};
 use itertools::Itertools;
 
 components!("test", {
@@ -22,21 +19,44 @@ fn init() {
 }
 
 #[test]
+fn single_change_query() {
+    init();
+    let mut world = World::new("change_query");
+    let id = world.spawn(Entity::new().with(a(), 1.));
+    let q = Query::new(ArchetypeFilter::new().incl(a())).when_changed(a());
+    // At version 0
+    let mut state = QueryState::new();
+    // Everything *after* 0
+    assert_eq!(&[id], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
+    // Equal to current version
+    assert_eq!(&[] as &[EntityId], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
+
+    // Generates change event with the current version
+    world.set_entry(id, ComponentEntry::new(a(), 2.)).unwrap();
+
+    // Everything after the current version, which is nothing.
+    assert_eq!(&[id], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
+}
+
+#[test]
 fn change_query() {
     init();
     let mut world = World::new("change_query");
-    let e_a = world.spawn(EntityData::new().set(a(), 1.));
+    let e_a = world.spawn(Entity::new().with(a(), 1.));
     let q = Query::new(ArchetypeFilter::new().incl(a())).when_changed(a());
     let mut state = QueryState::new();
 
     assert_eq!(&[e_a], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
     assert_eq!(&[] as &[EntityId], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
 
+    world.set(e_a, a(), 8.).unwrap();
+    assert_eq!(&[e_a], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
+
     world.set(e_a, a(), 2.).unwrap();
     world.set(e_a, a(), 2.).unwrap();
     assert_eq!(&[e_a], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
 
-    let e_b = world.spawn(EntityData::new().set(a(), 1.));
+    let e_b = world.spawn(Entity::new().with(a(), 1.));
     assert_eq!(&[e_b], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
 
     world.set(e_a, a(), 2.).unwrap();
@@ -48,7 +68,7 @@ fn change_query() {
 fn change_query_dyn() {
     init();
     let mut world = World::new("change_query");
-    let e_a = world.spawn(EntityData::new().set(a(), 1.));
+    let e_a = world.spawn(Entity::new().with(a(), 1.));
     let q = Query::new(ArchetypeFilter::new().incl(a())).when_changed(a());
     let mut state = QueryState::new();
 
@@ -59,7 +79,7 @@ fn change_query_dyn() {
     world.set_entry(e_a, ComponentEntry::new(a(), 2.0)).unwrap();
     assert_eq!(&[e_a], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
 
-    let e_b = world.spawn(EntityData::new().set(a(), 1.));
+    let e_b = world.spawn(Entity::new().with(a(), 1.));
     assert_eq!(&[e_b], &q.iter(&world, Some(&mut state)).map(|x| x.id()).collect_vec()[..]);
 
     world.set_entry(e_a, ComponentEntry::new(a(), 2.0)).unwrap();
@@ -72,7 +92,7 @@ fn change_system() {
     init();
     let mut world = World::new("change_system");
     let counter = Arc::new(AtomicU32::new(0));
-    let e_a = world.spawn(EntityData::new().set(a(), 1.).set(b(), 2.));
+    let e_a = world.spawn(Entity::new().with(a(), 1.).with(b(), 2.));
     let mut a_from_b = {
         let counter = counter.clone();
         query_mut((a(),), (b().changed(),)).to_system(move |query, world: &mut World, state, _| {
@@ -100,7 +120,7 @@ fn change_system() {
 fn despawn_query() {
     init();
     let mut world = World::new("despawn_query");
-    let x = world.spawn(EntityData::new().set(test(), "a"));
+    let x = world.spawn(Entity::new().with(test(), "a"));
     let mut qs = QueryState::new();
     assert_eq!(query((test(),)).despawned().iter(&world, Some(&mut qs)).count(), 0);
     world.despawn(x);
@@ -118,7 +138,7 @@ fn despawn_query() {
 fn change_query_multi_frame() {
     init();
     let mut world = World::new("change_query_multi_frame");
-    let e_a = world.spawn(EntityData::new().set(a(), 1.));
+    let e_a = world.spawn(Entity::new().with(a(), 1.));
     let mut state = QueryState::new();
     assert_eq!(query((a().changed(),)).iter(&world, Some(&mut state)).count(), 1);
     assert_eq!(query((a().changed(),)).iter(&world, Some(&mut state)).count(), 0);
@@ -174,7 +194,7 @@ fn add_component_events() {
         assert_eq!(query((a(), b())).despawned().iter(&world, Some(&mut qs_6)).count(), 0);
 
         // [+{ a }]
-        let x = world.spawn(EntityData::new().set(a(), 0.));
+        let x = world.spawn(Entity::new().with(a(), 0.));
         assert_eq!(query((a().changed(),)).iter(&world, Some(&mut qs1)).count(), 1);
         assert_eq!(query((b().changed(),)).iter(&world, Some(&mut qs2)).count(), 0);
         assert_eq!(query((a().changed(), b(),)).iter(&world, Some(&mut qs3)).count(), 0);
@@ -270,7 +290,7 @@ fn add_component_events() {
         assert_eq!(query((a(), b())).despawned().iter(&world, Some(&mut qs_6)).count(), 0);
 
         // [+{ a, b }]
-        let x = world.spawn(EntityData::new().set(a(), 0.).set(b(), 1.));
+        let x = world.spawn(Entity::new().with(a(), 0.).with(b(), 1.));
         assert_eq!(query((a().changed(),)).iter(&world, Some(&mut qs1)).count(), 1);
         assert_eq!(query((b().changed(),)).iter(&world, Some(&mut qs2)).count(), 1);
         assert_eq!(query((a().changed(), b(),)).iter(&world, Some(&mut qs3)).count(), 1);
@@ -303,7 +323,7 @@ fn add_component_events() {
 
         // [+{ a }]
         // [{ a, +b }]
-        let x = world.spawn(EntityData::new().set(a(), 0.));
+        let x = world.spawn(Entity::new().with(a(), 0.));
         world.add_component(x, b(), 1.).unwrap();
         assert_eq!(query((a().changed(),)).iter(&world, Some(&mut qs1)).count(), 1);
         assert_eq!(query((b().changed(),)).iter(&world, Some(&mut qs2)).count(), 1);
@@ -353,7 +373,7 @@ fn add_component_events() {
         assert_eq!(query((a(), b())).despawned().iter(&world, Some(&mut qs_6)).count(), 1);
 
         // [+{ a }]
-        let x = world.spawn(EntityData::new().set(a(), 0.));
+        let x = world.spawn(Entity::new().with(a(), 0.));
         world.set(x, a(), 1.).unwrap();
         assert_eq!(query((a().changed(),)).iter(&world, Some(&mut qs1)).count(), 1);
         assert_eq!(query((b().changed(),)).iter(&world, Some(&mut qs2)).count(), 0);
@@ -403,7 +423,7 @@ fn add_component_events() {
         assert_eq!(query((a(), b())).despawned().iter(&world, Some(&mut qs_6)).count(), 0);
 
         // [+{ a, b, c }]
-        let x = world.spawn(EntityData::new().set(a(), 0.));
+        let x = world.spawn(Entity::new().with(a(), 0.));
         world.add_component(x, b(), 1.).unwrap();
         world.add_component(x, c(), 1.).unwrap();
         assert_eq!(query((a().changed(),)).iter(&world, Some(&mut qs1)).count(), 1);
@@ -444,7 +464,7 @@ fn add_component_events_data_before_query_state() {
     let mut world = World::new("add_component_events_data_before_query_state");
 
     // [+{ a }]
-    let x = world.spawn(EntityData::new().set(a(), 0.));
+    let x = world.spawn(Entity::new().with(a(), 0.));
 
     let mut qs1 = QueryState::new();
     let mut qs2 = QueryState::new();

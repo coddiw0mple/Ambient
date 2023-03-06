@@ -1,7 +1,7 @@
 use std::{
     mem,
     ops::{Add, Sub},
-    time::Duration,
+    time::{Duration, SystemTimeError},
 };
 
 use ordered_float::NotNan;
@@ -25,7 +25,7 @@ impl Add<Duration> for Instant {
     type Output = Self;
 
     fn add(self, rhs: Duration) -> Self::Output {
-        Self(NotNan::new(*self.0 + rhs.as_nanos() as f64 / 1e6).unwrap())
+        Self(self.0 + rhs.as_nanos() as f64 / 1e6)
     }
 }
 
@@ -33,7 +33,7 @@ impl Sub<Duration> for Instant {
     type Output = Self;
 
     fn sub(self, rhs: Duration) -> Self::Output {
-        Self(NotNan::new(*self.0 - rhs.as_nanos() as f64 / 1e6).unwrap())
+        Self(self.0 - rhs.as_nanos() as f64 / 1e6)
     }
 }
 
@@ -56,6 +56,38 @@ impl Instant {
     #[inline]
     pub fn duration_since(&self, earlier: Self) -> Duration {
         Duration::from_nanos(((*self.0 - *earlier.0).max(0.0) * 1e6) as _)
+    }
+}
+
+/// Measurement of the system clock
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SystemTime(NotNan<f64>);
+
+impl Add<Duration> for SystemTime {
+    type Output = SystemTime;
+
+    fn add(self, rhs: Duration) -> Self::Output {
+        Self(self.0 + rhs.as_millis() as f64)
+    }
+}
+
+impl Sub<Duration> for SystemTime {
+    type Output = SystemTime;
+
+    fn sub(self, rhs: Duration) -> Self::Output {
+        Self(self.0 - rhs.as_millis() as f64)
+    }
+}
+
+impl SystemTime {
+    pub const UNIX_EPOCH: Self = SystemTime(unsafe { NotNan::new_unchecked(0.0) });
+
+    pub fn now() -> Self {
+        Self(NotNan::new(js_sys::Date::now()).unwrap())
+    }
+
+    pub fn duration_since(&self, earlier: Self) -> Result<Duration, SystemTimeError> {
+        Ok(Duration::from_nanos(((*self.0 - *earlier.0).max(0.0) * 1e6) as _))
     }
 }
 

@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_types)]
 use std::{
     ops::{Add, Sub},
-    time::Duration,
+    time::{Duration, SystemTimeError},
 };
 
 /// Represents an abstract point in time
@@ -22,7 +22,7 @@ impl Sub<Duration> for Instant {
     type Output = Instant;
 
     fn sub(self, rhs: Duration) -> Self::Output {
-        Self(self.0 - rhs)
+        Self(self.0.checked_sub(rhs).unwrap())
     }
 }
 
@@ -48,6 +48,37 @@ impl Instant {
     }
 
     pub fn duration_since(&self, earlier: Self) -> Duration {
+        self.0.duration_since(earlier.0)
+    }
+}
+
+/// Measurement of the system clock
+#[derive(From, Into, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SystemTime(pub(crate) std::time::SystemTime);
+
+impl Add<Duration> for SystemTime {
+    type Output = SystemTime;
+
+    fn add(self, rhs: Duration) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
+
+impl Sub<Duration> for SystemTime {
+    type Output = SystemTime;
+
+    fn sub(self, rhs: Duration) -> Self::Output {
+        Self(self.0 - rhs)
+    }
+}
+
+impl SystemTime {
+    pub const UNIX_EPOCH: Self = SystemTime(std::time::SystemTime::UNIX_EPOCH);
+    pub fn now() -> Self {
+        Self(std::time::SystemTime::now())
+    }
+
+    pub fn duration_since(&self, earlier: Self) -> Result<Duration, SystemTimeError> {
         self.0.duration_since(earlier.0)
     }
 }

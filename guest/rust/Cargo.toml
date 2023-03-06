@@ -1,8 +1,6 @@
 [workspace]
-members = [
-  "api",
-  "examples/*",
-]
+members = ["api", "examples/*/*"]
 
 [workspace.package]
 version = "0.1.1"
+rust-version = "1.67.0"

@@ -1,5 +1,6 @@
 use ambient_ecs::{
-    components, query, query_mut, Component, Description, ECSError, EntityData, EntityId, Name, Networked, Store, SystemGroup, World,
+    components, query, query_mut, Component, Concept, Debuggable, Description, ECSError, Entity, EntityId, Name, Networked, RefConcept,
+    Store, SystemGroup, World,
 };
 use ambient_std::{
     math::Line,
@@ -11,7 +12,7 @@ use ordered_float::OrderedFloat;
 
 use crate::{
     transform::{inv_local_to_world, local_to_world},
-    window_physical_size,
+    window_logical_size, window_physical_size,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -26,101 +27,108 @@ components!("camera", {
     // Orthographic
     orthographic_rect: OrthographicRect,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Orthographic projection"],
         Description["If attached, this camera will use a standard orthographic projection matrix.\nEnsure that the `orthographic_` components are set, including `left`, right`, `top` and `bottom`, as well as `near` and `far`."]
     ]
     orthographic: (),
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Orthographic left"],
         Description["The left bound for this `orthographic` camera."]
     ]
     orthographic_left: f32,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Orthographic right"],
         Description["The right bound for this `orthographic` camera."]
     ]
     orthographic_right: f32,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Orthographic top"],
         Description["The top bound for this `orthographic` camera."]
     ]
     orthographic_top: f32,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Orthographic bottom"],
         Description["The bottom bound for this `orthographic` camera."]
     ]
     orthographic_bottom: f32,
+    @[
+        Networked, Store, Debuggable,
+        Name["Orthographic from window"],
+        Description["The bounds of this orthographic camera will be updated to match the window automatically."]
+    ]
+    orthographic_from_window: (),
+
 
     // Perspective
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Perspective-infinite-reverse projection"],
         Description["If attached, this camera will use a perspective-infinite-reverse projection matrix.\nThis is well-suited for rendering large worlds as it has no far plane. Ensure `near` is set."]
     ]
     perspective_infinite_reverse: (),
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Perspective projection"],
         Description["If attached, this camera will use a standard perspective projection matrix.\nEnsure that `near` and `far` are set."]
     ]
     perspective: (),
+
+    // Properties
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Near plane"],
         Description["The near plane of this camera, measured in meters."]
     ]
-
-    // Properties
     near: f32,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Far plane"],
         Description["The far plane of this camera, measured in meters."]
     ]
     far: f32,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Field of View Y"],
         Description["The field of view of this camera in the Y/vertical direction, measured in radians."]
     ]
     fovy: f32,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Aspect ratio"],
         Description["The aspect ratio of this camera.\nIf `aspect_ratio_from_window` is set, this will be automatically updated to match the window."]
     ]
     aspect_ratio: f32,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Aspect ratio from window"],
         Description["If attached, the `aspect_ratio` component will be automatically updated to match the aspect ratio of the window."]
     ]
     aspect_ratio_from_window: (),
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Projection"],
         Description["The projection matrix of this camera.\nThis can be driven by other components, including `perspective` and `perspective_infinite_reverse`."]
     ]
     projection: glam::Mat4,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Projection-view"],
         Description["The composition of the projection and view (inverse-local-to-world) matrices."]
     ]
     projection_view: glam::Mat4,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Active camera"],
         Description["The camera with the highest `active_camera` value will be used for rendering."]
     ]
     active_camera: f32,
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Fog"],
         Description["If attached, this camera will see/render fog."]
     ]
@@ -128,26 +136,70 @@ components!("camera", {
 
     // Shadows
     @[
-        Networked, Store,
+        Networked, Store, Debuggable,
         Name["Shadows far plane"],
         Description["The far plane for the shadow camera, measured in meters."]
     ]
     shadows_far: f32,
 });
 
-/*
-query((
-    orthographic_left().changed(),
-    orthographic_right().changed(),
-    orthographic_top().changed(),
-    orthographic_bottom().changed(),
-))
-.incl(orthographic())
-.to_system(|q, world, qs, _| {
-    for (id, (left, right, top, bottom)) in q.collect_cloned(world, qs) {
-        world.add_component(id, orthographic_rect(), OrthographicRect { left, right, top, bottom }).unwrap();
-    }
-}), */
+pub fn concepts() -> Vec<Concept> {
+    vec![
+        RefConcept {
+            id: "camera",
+            name: "Camera",
+            description: "Base components for a camera. You will need other components to make a fully-functioning camera.",
+            extends: &["transformable"],
+            data: Entity::new()
+                .with(projection(), glam::Mat4::IDENTITY)
+                .with(projection_view(), glam::Mat4::IDENTITY)
+                .with(near(), 0.1)
+                .with_default(local_to_world())
+                .with_default(inv_local_to_world()),
+        }
+        .to_owned(),
+        RefConcept {
+            id: "perspective_common_camera",
+            name: "Perspective Common Camera",
+            description:
+                "Base components for a perspective camera. Consider `perspective_camera` or `perspective_infinite_reverse_camera`.",
+            extends: &["camera"],
+            data: Entity::new().with(aspect_ratio(), 1.0).with(fovy(), 1.0),
+        }
+        .to_owned(),
+        RefConcept {
+            id: "perspective_camera",
+            name: "Perspective Camera",
+            description: "A perspective camera.",
+            extends: &["perspective_common_camera"],
+            data: Entity::new().with(perspective(), ()).with(far(), 1_000.0),
+        }
+        .to_owned(),
+        RefConcept {
+            id: "perspective_infinite_reverse_camera",
+            name: "Perspective-Infinite-Reverse Camera",
+            description: "A perspective-infinite-reverse camera. This is recommended for most use-cases.",
+            extends: &["perspective_common_camera"],
+            data: Entity::new().with(perspective_infinite_reverse(), ()),
+        }
+        .to_owned(),
+        RefConcept {
+            id: "orthographic_camera",
+            name: "Orthographic Camera",
+            description: "An orthographic camera.",
+            extends: &["camera"],
+            data: Entity::new()
+                .with(orthographic(), ())
+                .with(orthographic_left(), -1.0)
+                .with(orthographic_right(), 1.0)
+                .with(orthographic_top(), 1.0)
+                .with(orthographic_bottom(), -1.0)
+                .with(near(), -1.)
+                .with(far(), 1.0),
+        }
+        .to_owned(),
+    ]
+}
 
 pub fn camera_systems() -> SystemGroup {
     SystemGroup::new(
@@ -172,6 +224,35 @@ pub fn camera_systems() -> SystemGroup {
             query_mut((projection(),), (near(), far(), fovy(), aspect_ratio())).incl(perspective()).to_system(|q, world, qs, _| {
                 for (_, (projection,), (&near, &far, &fovy, &aspect_ratio)) in q.iter(world, qs) {
                     *projection = perspective_reverse(fovy, aspect_ratio, near, far);
+                }
+            }),
+            query(())
+                .incl(orthographic_from_window())
+                .incl(orthographic_left())
+                .incl(orthographic_right())
+                .incl(orthographic_top())
+                .incl(orthographic_bottom())
+                .incl(local_to_world())
+                .to_system(|q, world, qs, _| {
+                    let window_size = world.resource(window_logical_size()).as_vec2();
+                    for (id, _) in q.collect_cloned(world, qs) {
+                        world.set_if_changed(id, local_to_world(), Mat4::from_translation((window_size / 2.).extend(0.))).unwrap();
+                        world.set_if_changed(id, orthographic_left(), -window_size.x / 2.).unwrap();
+                        world.set_if_changed(id, orthographic_right(), window_size.x / 2.).unwrap();
+                        world.set_if_changed(id, orthographic_top(), -window_size.y / 2.).unwrap();
+                        world.set_if_changed(id, orthographic_bottom(), window_size.y / 2.).unwrap();
+                    }
+                }),
+            query((
+                orthographic_left().changed(),
+                orthographic_right().changed(),
+                orthographic_top().changed(),
+                orthographic_bottom().changed(),
+            ))
+            .incl(orthographic())
+            .to_system(|q, world, qs, _| {
+                for (id, (left, right, top, bottom)) in q.collect_cloned(world, qs) {
+                    world.add_component(id, orthographic_rect(), OrthographicRect { left, right, top, bottom }).unwrap();
                 }
             }),
             query_mut((projection(),), (near(), far(), orthographic_rect())).to_system(|q, world, qs, _| {
@@ -299,22 +380,22 @@ impl Projection {
             Projection::Identity => Mat4::IDENTITY,
         }
     }
-    pub fn to_entity_data(&self) -> EntityData {
+    pub fn to_entity_data(&self) -> Entity {
         match self.clone() {
             Projection::Orthographic { rect, near, far } => {
-                EntityData::new().set(orthographic_rect(), rect).set(self::near(), near).set(self::far(), far)
+                Entity::new().with(orthographic_rect(), rect).with(self::near(), near).with(self::far(), far)
             }
-            Projection::PerspectiveInfiniteReverse { fovy, aspect_ratio, near } => EntityData::new()
-                .set(perspective_infinite_reverse(), ())
-                .set(self::near(), near)
-                .set(self::fovy(), fovy)
-                .set(self::aspect_ratio(), aspect_ratio),
-            Projection::Perspective { fovy, aspect_ratio, near, far } => EntityData::new()
-                .set(perspective(), ())
-                .set(self::near(), near)
-                .set(self::far(), far)
-                .set(self::fovy(), fovy)
-                .set(self::aspect_ratio(), aspect_ratio),
+            Projection::PerspectiveInfiniteReverse { fovy, aspect_ratio, near } => Entity::new()
+                .with(perspective_infinite_reverse(), ())
+                .with(self::near(), near)
+                .with(self::fovy(), fovy)
+                .with(self::aspect_ratio(), aspect_ratio),
+            Projection::Perspective { fovy, aspect_ratio, near, far } => Entity::new()
+                .with(perspective(), ())
+                .with(self::near(), near)
+                .with(self::far(), far)
+                .with(self::fovy(), fovy)
+                .with(self::aspect_ratio(), aspect_ratio),
             Projection::Identity => panic!("Identity projection is not supported"),
         }
     }
@@ -506,12 +587,12 @@ impl Camera {
         };
         Self { projection: Projection::Orthographic { rect: ortho, near: bounding.min.z, far: bounding.max.z }, view, shadows_far: 100. }
     }
-    pub fn to_entity_data(&self) -> EntityData {
+    pub fn to_entity_data(&self) -> Entity {
         self.projection
             .to_entity_data()
-            .set(local_to_world(), self.view.inverse())
-            .set(inv_local_to_world(), self.view)
-            .set(projection_view(), self.projection_view())
+            .with(local_to_world(), self.view.inverse())
+            .with(inv_local_to_world(), self.view)
+            .with(projection_view(), self.projection_view())
     }
 }
 

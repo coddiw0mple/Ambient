@@ -7,7 +7,7 @@ use std::{
 
 use ambient_app::window_title;
 use ambient_core::{asset_cache, gpu, mirror_window_components, runtime};
-use ambient_ecs::{components, query, EntityData, EntityId, Resource, SystemGroup, World, WorldDiff};
+use ambient_ecs::{components, query, Entity, EntityId, Resource, SystemGroup, World, WorldDiff};
 use ambient_element::{Element, ElementComponent, ElementComponentExt, Hooks};
 use ambient_renderer::RenderTarget;
 use ambient_rpc::RpcRegistry;
@@ -136,13 +136,15 @@ pub struct GameClientView {
     pub server_addr: SocketAddr,
     pub user_id: String,
     pub resolution: UVec2,
-    pub systems_and_resources: Cb<dyn Fn() -> (SystemGroup, EntityData) + Sync + Send>,
+    pub systems_and_resources: Cb<dyn Fn() -> (SystemGroup, Entity) + Sync + Send>,
     pub init_world: Cb<UseOnce<InitCallback>>,
     pub error_view: Cb<dyn Fn(String) -> Element + Sync + Send>,
     pub on_loaded: Cb<dyn Fn(Arc<Mutex<ClientGameState>>, GameClient) -> anyhow::Result<Box<dyn FnOnce() + Sync + Send>> + Sync + Send>,
     pub on_in_entities: Option<Cb<dyn Fn(&WorldDiff) + Sync + Send>>,
     pub on_disconnect: Cb<dyn Fn() + Sync + Send + 'static>,
     pub create_rpc_registry: Cb<dyn Fn() -> RpcRegistry<GameRpcArgs> + Sync + Send>,
+    pub on_network_stats: Cb<dyn Fn(GameClientNetworkStats) + Sync + Send>,
+    pub on_server_stats: Cb<dyn Fn(GameClientServerStats) + Sync + Send>,
     pub ui: Element,
 }
 
@@ -159,6 +161,8 @@ impl Clone for GameClientView {
             on_in_entities: self.on_in_entities.clone(),
             on_disconnect: self.on_disconnect.clone(),
             create_rpc_registry: self.create_rpc_registry.clone(),
+            on_network_stats: self.on_network_stats.clone(),
+            on_server_stats: self.on_server_stats.clone(),
             ui: self.ui.clone(),
         }
     }
@@ -178,10 +182,9 @@ impl ElementComponent for GameClientView {
             on_in_entities,
             ui,
             on_disconnect,
+            on_network_stats,
+            on_server_stats,
         } = *self;
-
-        let (_, client_stats_ctx) = hooks.consume_context::<GameClientNetworkStats>().unwrap();
-        let (_, server_stats_ctx) = hooks.consume_context::<GameClientServerStats>().unwrap();
 
         let gpu = hooks.world.resource(gpu()).clone();
 
@@ -259,15 +262,15 @@ impl ElementComponent for GameClientView {
                             on_in_entities(&diff);
                         }
                         let mut gs = game_state.lock();
-                        diff.apply(&mut gs.world, EntityData::new().set(is_remote_entity(), ()), false);
+                        diff.apply(&mut gs.world, Entity::new().with(is_remote_entity(), ()), false);
                     };
 
                     let mut on_server_stats = |stats| {
-                        server_stats_ctx(stats);
+                        on_server_stats(stats);
                     };
 
-                    let mut on_client_stats = |stats| {
-                        client_stats_ctx(stats);
+                    let mut on_network_stats = |stats| {
+                        on_network_stats(stats);
                     };
 
                     let client_loop = ClientInstance {
@@ -277,7 +280,7 @@ impl ElementComponent for GameClientView {
                         on_init: &mut on_init,
                         on_diff: &mut on_diff,
                         on_server_stats: &mut on_server_stats,
-                        on_client_stats: &mut on_client_stats,
+                        on_client_stats: &mut on_network_stats,
                         on_event: &mut on_event,
                         on_disconnect,
                         init_destructor: None,

@@ -8,4 +8,9 @@ rustflags = [
   # We have a lot of complex types
   "-Aclippy::type_complexity",
   "-Dclippy::dbg_macro",
+  "-Dclippy::disallowed_types"
 ]
+
+[target.'cfg(target_os = "unknown")']
+# This enables native webgpu bindings
+rustflags = ["--cfg=web_sys_unstable_apis"]

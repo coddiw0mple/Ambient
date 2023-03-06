@@ -9,23 +9,23 @@ use ambient_core::{
     transform::{get_world_position, inv_local_to_world, local_to_world, mesh_to_world},
 };
 use ambient_ecs::{
-    components, query, ComponentDesc, Debuggable, Description, EntityData, EntityId, MaybeResource, Name, Networked, Store, SystemGroup,
-    World,
+    components, query, ComponentDesc, Debuggable, Description, Entity, EntityId, MaybeResource, Name, Networked, Store, SystemGroup, World,
 };
 use ambient_gpu::mesh_buffer::GpuMeshFromUrl;
 use ambient_renderer::{
     color, gpu_primitives,
     materials::{
         flat_material::{get_flat_shader, FlatMaterialKey},
-        pbr_material::{get_pbr_shader, PbrMaterialFromUrl},
+        pbr_material::get_pbr_shader,
     },
+    pbr_material::PbrMaterialFromUrl,
     primitives, RenderPrimitive, StandardShaderKey,
 };
 use ambient_std::{
     asset_cache::{AssetCache, AsyncAssetKey, AsyncAssetKeyExt, SyncAssetKey, SyncAssetKeyExt},
     asset_url::{AbsAssetUrl, AssetUrl, ModelAssetType, TypedAssetUrl},
     cb,
-    download_asset::{AssetError, BytesFromUrl, JsonFromUrl},
+    download_asset::{AssetError, BytesFromUrl},
     log_result,
     math::Line,
 };
@@ -81,8 +81,8 @@ async fn internal_spawn_models_from_defs(
 
     let mat = LoadingMaterialKey { speed: 2.0, scale: 6.0 }.get(assets);
 
-    let cube = EntityData::new()
-        .set(
+    let cube = Entity::new()
+        .with(
             primitives(),
             vec![RenderPrimitive {
                 shader: cb(move |assets, config| {
@@ -94,17 +94,17 @@ async fn internal_spawn_models_from_defs(
                 lod: 0,
             }],
         )
-        .set_default(gpu_primitives())
-        .set(color(), vec4(0.0, 0.5, 1.0, 1.0))
-        .set(main_scene(), ())
-        .set_default(local_to_world())
-        .set_default(mesh_to_world())
-        .set_default(local_to_world())
-        .set_default(inv_local_to_world());
+        .with_default(gpu_primitives())
+        .with(color(), vec4(0.0, 0.5, 1.0, 1.0))
+        .with(main_scene(), ())
+        .with_default(local_to_world())
+        .with_default(mesh_to_world())
+        .with_default(local_to_world())
+        .with_default(inv_local_to_world());
 
     let mut ids = entities_with_models.values().flatten().copied().collect_vec();
 
-    let cube_fail = Arc::new(cube.clone().set(color(), vec4(1.0, 0.0, 0.0, 1.0)));
+    let cube_fail = Arc::new(cube.clone().with(color(), vec4(1.0, 0.0, 0.0, 1.0)));
 
     async_run.run(move |world| {
         ids.retain(|id| world.exists(*id));
@@ -153,7 +153,7 @@ async fn internal_spawn_models_from_defs(
                         &ModelSpawnOpts {
                             root: ModelSpawnRoot::AttachTo(ids),
                             // We need to keep the model alive on the entity here, or otherwise it'll unload from the asset store
-                            root_components: EntityData::new().set(self::model(), model.clone()),
+                            root_components: Entity::new().with(self::model(), model.clone()),
                             ..Default::default()
                         },
                         len,
@@ -289,8 +289,7 @@ impl AsyncAssetKey<Result<Arc<RenderPrimitive>, AssetError>> for PbrRenderPrimit
     async fn load(self, assets: AssetCache) -> Result<Arc<RenderPrimitive>, AssetError> {
         let mesh = GpuMeshFromUrl { url: self.mesh, cache_on_disk: true }.get(&assets).await?;
         if let Some(mat_url) = self.material {
-            let mat_def = JsonFromUrl::<PbrMaterialFromUrl>::new(mat_url.clone(), true).get(&assets).await?;
-            let mat = mat_def.resolve(&mat_url)?.get(&assets).await?;
+            let mat = PbrMaterialFromUrl(mat_url).get(&assets).await?;
             Ok(Arc::new(RenderPrimitive { material: mat.into(), shader: cb(get_pbr_shader), mesh, lod: self.lod }))
         } else {
             Ok(Arc::new(RenderPrimitive {

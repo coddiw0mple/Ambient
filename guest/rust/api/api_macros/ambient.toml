@@ -40,6 +40,10 @@ description = "Prefab-related state, including loading of prefabs."
 name = "Physics"
 description = "Physics functionality and state."
 
+[components."core::input"]
+name = "Input"
+description = "Mouse, keyboard and controller input."
+
 [components."core::player"]
 name = "Player"
 description = "Components that are attached to player entities."
@@ -67,6 +71,18 @@ description = """
 How long the previous tick took in seconds.
 Also known as frametime."""
 attributes = ["Debuggable", "Resource"]
+
+[components."core::app::element"]
+type = "String"
+name = "Element"
+description = "The id of the Element which controls this Entity."
+attributes = ["Debuggable", "Networked"]
+
+[components."core::app::element_unmanaged_children"]
+type = "Empty"
+name = "Element unmanaged children"
+description = "If this is set, the user is expected to manage the children of the element themselves."
+attributes = ["Debuggable", "Networked"]
 
 [components."core::app::main_scene"]
 type = "Empty"
@@ -120,11 +136,29 @@ name = "UI scene"
 description = "If attached, this entity belongs to the UI scene."
 attributes = ["Debuggable", "Networked", "Store"]
 
+[components."core::app::window_logical_size"]
+type = "Uvec2"
+name = "Window logical size"
+description = "The logical size is the physical size divided by the scale factor."
+attributes = ["Resource"]
+
+[components."core::app::window_physical_size"]
+type = "Uvec2"
+name = "Window physical size"
+description = "The physical size is the actual number of pixels on the screen."
+attributes = ["Resource"]
+
+[components."core::app::window_scale_factor"]
+type = "F64"
+name = "Window scale factor"
+description = "This number is usually 1, but on for instance retina displays it's 2."
+attributes = ["Resource"]
+
 [components."core::camera::active_camera"]
 type = "F32"
 name = "Active camera"
 description = "The camera with the highest `active_camera` value will be used for rendering."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::aspect_ratio"]
 type = "F32"
@@ -132,37 +166,37 @@ name = "Aspect ratio"
 description = """
 The aspect ratio of this camera.
 If `aspect_ratio_from_window` is set, this will be automatically updated to match the window."""
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::aspect_ratio_from_window"]
 type = "Empty"
 name = "Aspect ratio from window"
 description = "If attached, the `aspect_ratio` component will be automatically updated to match the aspect ratio of the window."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::far"]
 type = "F32"
 name = "Far plane"
 description = "The far plane of this camera, measured in meters."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::fog"]
 type = "Empty"
 name = "Fog"
 description = "If attached, this camera will see/render fog."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::fovy"]
 type = "F32"
 name = "Field of View Y"
 description = "The field of view of this camera in the Y/vertical direction, measured in radians."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::near"]
 type = "F32"
 name = "Near plane"
 description = "The near plane of this camera, measured in meters."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::orthographic"]
 type = "Empty"
@@ -170,31 +204,37 @@ name = "Orthographic projection"
 description = """
 If attached, this camera will use a standard orthographic projection matrix.
 Ensure that the `orthographic_` components are set, including `left`, right`, `top` and `bottom`, as well as `near` and `far`."""
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::orthographic_bottom"]
 type = "F32"
 name = "Orthographic bottom"
 description = "The bottom bound for this `orthographic` camera."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::camera::orthographic_from_window"]
+type = "Empty"
+name = "Orthographic from window"
+description = "The bounds of this orthographic camera will be updated to match the window automatically."
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::orthographic_left"]
 type = "F32"
 name = "Orthographic left"
 description = "The left bound for this `orthographic` camera."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::orthographic_right"]
 type = "F32"
 name = "Orthographic right"
 description = "The right bound for this `orthographic` camera."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::orthographic_top"]
 type = "F32"
 name = "Orthographic top"
 description = "The top bound for this `orthographic` camera."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::perspective"]
 type = "Empty"
@@ -202,7 +242,7 @@ name = "Perspective projection"
 description = """
 If attached, this camera will use a standard perspective projection matrix.
 Ensure that `near` and `far` are set."""
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::perspective_infinite_reverse"]
 type = "Empty"
@@ -210,7 +250,7 @@ name = "Perspective-infinite-reverse projection"
 description = """
 If attached, this camera will use a perspective-infinite-reverse projection matrix.
 This is well-suited for rendering large worlds as it has no far plane. Ensure `near` is set."""
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::projection"]
 type = "Mat4"
@@ -218,27 +258,19 @@ name = "Projection"
 description = """
 The projection matrix of this camera.
 This can be driven by other components, including `perspective` and `perspective_infinite_reverse`."""
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::projection_view"]
 type = "Mat4"
 name = "Projection-view"
 description = "The composition of the projection and view (inverse-local-to-world) matrices."
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::camera::shadows_far"]
 type = "F32"
 name = "Shadows far plane"
 description = "The far plane for the shadow camera, measured in meters."
-attributes = ["Networked", "Store"]
-
-[components."core::camera::ui_camera"]
-type = "Empty"
-name = "UI camera"
-description = """
-This entity is a camera that is used to render UI.
-Ensure that you have the remaining camera components."""
-attributes = ["Networked", "Store"]
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::ecs::children"]
 type = { type = "Vec", element_type = "EntityId" }
@@ -284,6 +316,54 @@ If attached to a camera entity, this camera will be used as a player's primary c
 If a `user_id` is specified, this camera will only be used for that player; otherwise, it will be used for every player.
 This component is temporary and will likely be removed with the addition of clientside scripting."""
 attributes = ["Debuggable", "Networked"]
+
+[components."core::input::event_mouse_input"]
+type = "Bool"
+name = "Event mouse input"
+description = "A mouse button was pressed (true) or released (false). Will also contain a `mouse_button` component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::input::event_mouse_motion"]
+type = "Vec2"
+name = "Event mouse motion"
+description = "The mouse was moved. The value represents the delta. Use mouse_position to get the current position."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::input::event_mouse_wheel"]
+type = "Vec2"
+name = "Event mouse wheel"
+description = "The mouse wheel moved. The value represents the delta."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::input::event_mouse_wheel_pixels"]
+type = "Bool"
+name = "Event mouse wheel"
+description = "If true, the mouse_wheel_event should be interpreted as pixels, if false it should be interpreted as lines."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::input::mouse_button"]
+type = "U32"
+name = "Mouse button"
+description = "The mouse button. 0=left, 1=right, 2=middle."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::input::mouse_over"]
+type = "Bool"
+name = "Mouse over"
+description = "A mouse cursor is currently over this entity."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::input::mouse_pickable_max"]
+type = "Vec3"
+name = "Mouse pickable max"
+description = "This entity can be clicked by the mouse, and this component defines the max AABB bound of the click area."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::input::mouse_pickable_min"]
+type = "Vec3"
+name = "Mouse pickable min"
+description = "This entity can be clicked by the mouse, and this component defines the min AABB bound of the click area."
+attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::model::model_animatable"]
 type = "Bool"
@@ -632,6 +712,12 @@ name = "Overlay"
 description = "If attached, this entity will be rendered with an overlay."
 attributes = ["Debuggable", "Networked", "Store"]
 
+[components."core::rendering::pbr_material_from_url"]
+type = "String"
+name = "Pbr material from url"
+description = "Load a pbr material from the url and attach it to this entity."
+attributes = ["Debuggable", "Networked", "Store"]
+
 [components."core::rendering::sky"]
 type = "Empty"
 name = "Sky"
@@ -748,16 +834,208 @@ name = "Translation"
 description = "The translation/position of this entity."
 attributes = ["Debuggable", "Networked", "Store"]
 
+[components."core::ui::align_horizontal_begin"]
+type = "Empty"
+name = "Align horizontal begin"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::align_horizontal_center"]
+type = "Empty"
+name = "Align horizontal center"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::align_horizontal_end"]
+type = "Empty"
+name = "Align horizontal end"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::align_vertical_begin"]
+type = "Empty"
+name = "Align vertical begin"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::align_vertical_center"]
+type = "Empty"
+name = "Align vertical center"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::align_vertical_end"]
+type = "Empty"
+name = "Align vertical end"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::background_color"]
+type = "Vec4"
+name = "Background color"
+description = "Background color of a rect() entity."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::border_color"]
+type = "Vec4"
+name = "Border color"
+description = "Border color of a rect() entity."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::border_radius"]
+type = "Vec4"
+name = "Border radius"
+description = "x = top left, y = top right, z = bottom left, w = bottom right."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::border_thickness"]
+type = "F32"
+name = "Border thickness"
+description = "Border thickness of a rect() entity."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::docking_bottom"]
+type = "Empty"
+name = "Docking bottom"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::docking_fill"]
+type = "Empty"
+name = "Docking fill"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::docking_left"]
+type = "Empty"
+name = "Docking left"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::docking_right"]
+type = "Empty"
+name = "Docking right"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::docking_top"]
+type = "Empty"
+name = "Docking top"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::fit_horizontal_children"]
+type = "Empty"
+name = "Fit horizontal children"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::fit_horizontal_none"]
+type = "Empty"
+name = "Fit horizontal none"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::fit_horizontal_parent"]
+type = "Empty"
+name = "Fit horizontal parent"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::fit_vertical_children"]
+type = "Empty"
+name = "Fit vertical children"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::fit_vertical_none"]
+type = "Empty"
+name = "Fit vertical none"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::fit_vertical_parent"]
+type = "Empty"
+name = "Fit vertical parent"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
 [components."core::ui::font_size"]
 type = "F32"
 name = "Font size"
 description = "Size of the font."
 attributes = ["Debuggable", "Networked", "Store"]
 
+[components."core::ui::gpu_ui_size"]
+type = "Vec4"
+name = "Gpu ui size"
+description = "Upload the width and height of this to the gpu."
+attributes = ["Debuggable", "Networked", "Store"]
+
 [components."core::ui::height"]
 type = "F32"
 name = "Height"
 description = "The height of a UI element."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::is_book_file"]
+type = "Empty"
+name = "Is book file"
+description = "This is a file in a layout_bookcase."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::layout_bookcase"]
+type = "Empty"
+name = "Bookcase layout"
+description = "Min-max bookcase layout."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::layout_dock"]
+type = "Empty"
+name = "Dock layout"
+description = "Top-down dock layout."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::layout_flow"]
+type = "Empty"
+name = "Flow layout"
+description = "Bottom-up flow layout."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::layout_width_to_children"]
+type = "Empty"
+name = "Layout width to children"
+description = "Width to children."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::margin_bottom"]
+type = "F32"
+name = "Margin bottom"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::margin_left"]
+type = "F32"
+name = "Margin left"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::margin_right"]
+type = "F32"
+name = "Margin right"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::margin_top"]
+type = "F32"
+name = "Margin top"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::mesh_to_local_from_size"]
+type = "Empty"
+name = "Mest to local from size"
+description = "Update the mesh_to_local based on the width and height of this entity."
 attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::ui::min_height"]
@@ -770,6 +1048,54 @@ attributes = ["Debuggable", "Networked", "Store"]
 type = "F32"
 name = "Minimum width"
 description = "The minimum width of a UI element."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::orientation_horizontal"]
+type = "Empty"
+name = "Orientation horizontal"
+description = "Layout orientation."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::orientation_vertical"]
+type = "Empty"
+name = "Orientation vertical"
+description = "Layout orientation."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::padding_bottom"]
+type = "F32"
+name = "Padding bottom"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::padding_left"]
+type = "F32"
+name = "Padding left"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::padding_right"]
+type = "F32"
+name = "Padding right"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::padding_top"]
+type = "F32"
+name = "Padding top"
+description = "Layout component."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::rect"]
+type = "Empty"
+name = "Rect"
+description = "Make this into a rectangle, with optionally rounded corners and borders."
+attributes = ["Debuggable", "Networked", "Store"]
+
+[components."core::ui::space_between_items"]
+type = "F32"
+name = "Space between items"
+description = "Space between items in a layout."
 attributes = ["Debuggable", "Networked", "Store"]
 
 [components."core::ui::text"]
@@ -790,8 +1116,8 @@ description = "Can be translated, rotated and scaled."
 
 [concepts.transformable.components]
 "core::transform::translation" = [0.0, 0.0, 0.0]
-"core::transform::rotation" = [0.0, 0.0, 0.0, 1.0]
 "core::transform::scale" = [1.0, 1.0, 1.0]
+"core::transform::rotation" = [0.0, 0.0, 0.0, 1.0]
 
 [concepts.sphere]
 name = "Sphere"
@@ -809,9 +1135,11 @@ description = "Base components for a camera. You will need other components to m
 extends = ["transformable"]
 
 [concepts.camera.components]
+"core::camera::near" = 0.10000000149011612
 "core::camera::projection" = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 "core::camera::projection_view" = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-"core::camera::near" = 0.10000000149011612
+"core::transform::local_to_world" = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+"core::transform::inv_local_to_world" = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
 [concepts.perspective_common_camera]
 name = "Perspective Common Camera"
@@ -819,8 +1147,8 @@ description = "Base components for a perspective camera. Consider `perspective_c
 extends = ["camera"]
 
 [concepts.perspective_common_camera.components]
-"core::camera::aspect_ratio" = 1.0
 "core::camera::fovy" = 1.0
+"core::camera::aspect_ratio" = 1.0
 
 [concepts.perspective_camera]
 name = "Perspective Camera"
@@ -850,4 +1178,5 @@ extends = ["camera"]
 "core::camera::orthographic_right" = 1.0
 "core::camera::orthographic_top" = 1.0
 "core::camera::orthographic_bottom" = -1.0
-"core::camera::far" = 1000.0
+"core::camera::near" = -1.0
+"core::camera::far" = 1.0

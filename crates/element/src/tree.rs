@@ -5,17 +5,21 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(feature = "native")]
+use crate::element_tree;
+use crate::element_unmanaged_children;
+use crate::{AnyCloneable, ContextUpdate, DespawnFn, Element, ElementConfig, Hooks, HooksEnvironment, InstanceId, StateUpdate};
+#[cfg(feature = "native")]
 use ambient_core::hierarchy::{children, parent};
-use ambient_ecs::{query, Component, EntityData, EntityId, SystemGroup, World};
-use ambient_std::friendly_id;
+#[cfg(feature = "guest")]
+use ambient_guest_bridge::api::components::core::ecs::{children, parent};
+#[cfg(feature = "native")]
+use ambient_guest_bridge::ecs::{query, Component, SystemGroup};
+use ambient_guest_bridge::ecs::{Entity, EntityId, World};
+use friendly_id::friendly_id;
 use itertools::Itertools;
 use parking_lot::Mutex;
 use tracing::debug_span;
-
-use crate::{
-    element_tree, element_unmanaged_children, AnyCloneable, ContextUpdate, DespawnFn, Element, ElementConfig, Hooks, HooksEnvironment,
-    InstanceId, StateUpdate,
-};
 
 #[derive(Debug)]
 pub(crate) struct HookContext {
@@ -98,6 +102,7 @@ impl ElementTree {
         })
     }
 
+    #[cfg(feature = "native")]
     pub fn render_with_component(world: &mut World, id: EntityId, handle: Component<ShareableElementTree>, element: Element) {
         if let Ok(tree) = world.get_ref(id, handle).map(|x| x.clone()) {
             tree.0.lock().migrate_root(world, element);
@@ -106,9 +111,11 @@ impl ElementTree {
             world.add_component(id, handle, tree).unwrap();
         }
     }
+    #[cfg(feature = "native")]
     pub fn render(world: &mut World, id: EntityId, element: Element) {
         Self::render_with_component(world, id, element_tree(), element)
     }
+    #[cfg(feature = "native")]
     pub fn systems_for_component(component: Component<ShareableElementTree>) -> SystemGroup {
         SystemGroup::new(
             "ElementTree::systems_for_component",
@@ -219,9 +226,9 @@ impl ElementTree {
         } else {
             let instance = self.instances.get(instance_id).unwrap();
             if instance.entity.is_null() {
-                let mut entity_data = EntityData::new().set_default(crate::element());
+                let mut entity_data = Entity::new().with_default(crate::element());
                 if let Some(parent_entity) = instance.parent_entity {
-                    entity_data = entity_data.set(parent(), parent_entity);
+                    entity_data = entity_data.with(parent(), parent_entity);
                 }
                 (instance.config.spawner)(world, entity_data)
             } else {
@@ -229,7 +236,7 @@ impl ElementTree {
             }
         };
 
-        let mut components = EntityData::new();
+        let mut components = Entity::new();
         let spawn = {
             let instance = self.instances.get_mut(instance_id).unwrap();
             let spawn = instance.entity != entity;
@@ -244,7 +251,6 @@ impl ElementTree {
         self.gather_parent_components(world, instance_id, &mut components);
         let instance = self.instances.get(instance_id).unwrap();
         world.add_components(instance.entity, components).unwrap();
-        instance.config.event_listeners.add_to_entity(world, instance.entity);
         if spawn {
             if let Some(on_spawned) = &instance.config.on_spawned {
                 on_spawned(world, entity);
@@ -263,12 +269,13 @@ impl ElementTree {
         let instance = self.instances.get_mut(instance_id).unwrap();
         if instance.entity != old_entity {
             if let Some(parent) = instance.parent_entity {
-                let children = world.get_mut(parent, children()).unwrap();
-                for c in children.iter_mut() {
+                let mut childs = world.get_ref(parent, children()).unwrap().clone();
+                for c in childs.iter_mut() {
                     if *c == old_entity {
                         *c = instance.entity;
                     }
                 }
+                world.set(parent, children(), childs).unwrap();
             }
         }
     }
@@ -315,7 +322,6 @@ impl ElementTree {
     fn migrate_instance(&mut self, world: &mut World, instance_id: &str, node_parent: Option<EntityId>, new_node: Element) {
         {
             let instance = self.instances.get_mut(instance_id).unwrap();
-            instance.config.event_listeners.remove_from_entity(world, instance.entity);
             instance.config = new_node.config;
             instance.parent_entity = node_parent;
         }
@@ -421,7 +427,7 @@ impl ElementTree {
                 .unwrap();
         }
     }
-    fn gather_parent_components(&self, world: &World, instance_id: &str, components: &mut EntityData) {
+    fn gather_parent_components(&self, world: &World, instance_id: &str, components: &mut Entity) {
         let parent = {
             let instance = self.instances.get(instance_id).unwrap();
             instance.config.components.write_to_entity_data(world, components);

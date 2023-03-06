@@ -1,9 +1,9 @@
 use ambient_ecs::{
     paste::paste, primitive_component_definitions, with_component_registry, Component,
-    ComponentDesc, ComponentEntry, ECSError, EntityData, EntityId, World,
+    ComponentDesc, ComponentEntry, ECSError, Entity as EntityData, EntityId, World,
 };
 
-use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
+use glam::{Mat4, Quat, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 
 use super::{
     conversion::{FromBindgen, IntoBindgen},

@@ -1,20 +1,22 @@
-use std::{f32::consts::PI, sync::Arc};
+use std::{f32::consts::PI, fmt::Debug, sync::Arc};
 
 use ambient_core::{
+    asset_cache,
+    async_ecs::async_run,
     gpu_components,
     gpu_ecs::{ComponentToGpuSystem, GpuComponentFormat, GpuWorldShaderModuleKey, GpuWorldSyncEvent},
-    mesh,
+    mesh, runtime,
     transform::get_world_rotation,
 };
 use ambient_ecs::{
-    components, query_mut, Debuggable, Description, EntityId, MakeDefault, Name, Networked, Resource, Store, SystemGroup, World,
+    components, query_mut, Debuggable, Description, Entity, EntityId, MakeDefault, Name, Networked, Resource, Store, SystemGroup, World,
 };
 use ambient_gpu::{
-    mesh_buffer::{get_mesh_buffer_types, GpuMesh, MESH_BUFFER_TYPES_WGSL},
+    mesh_buffer::{get_mesh_buffer_types, GpuMesh},
     shader_module::{BindGroupDesc, Shader, ShaderModule, ShaderModuleIdentifier},
     wgsl_utils::wgsl_interpolate,
 };
-use ambient_std::{asset_cache::*, include_file, Cb};
+use ambient_std::{asset_cache::*, asset_url::AbsAssetUrl, cb, include_file, Cb};
 use derive_more::*;
 use downcast_rs::{impl_downcast, DowncastSync};
 use glam::{uvec4, UVec2, UVec4, Vec3, Vec4};
@@ -38,6 +40,7 @@ use ambient_ecs::{query, Component};
 pub use collect::*;
 pub use culling::*;
 pub use globals::*;
+use materials::pbr_material::PbrMaterialFromUrl;
 pub use materials::*;
 use ordered_float::OrderedFloat;
 pub use outlines::*;
@@ -56,6 +59,12 @@ components!("rendering", {
     gpu_primitives: [GpuRenderPrimitive; MAX_PRIMITIVE_COUNT],
     renderer_shader: RendererShaderProducer,
     material: SharedMaterial,
+    @[
+        MakeDefault, Debuggable, Networked, Store,
+        Name["Pbr material from url"],
+        Description["Load a pbr material from the url and attach it to this entity."]
+    ]
+    pbr_material_from_url: String,
     @[Resource]
     renderer_stats: String,
     @[
@@ -145,6 +154,38 @@ pub fn systems() -> SystemGroup {
     SystemGroup::new(
         "renderer",
         vec![
+            query(pbr_material_from_url().changed()).to_system(|q, world, qs, _| {
+                for (id, url) in q.collect_cloned(world, qs) {
+                    let url = match AbsAssetUrl::parse(url) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            log::warn!("Failed to parse pbr_material_from_url url: {:?}", err);
+                            continue;
+                        }
+                    };
+                    let assets = world.resource(asset_cache()).clone();
+                    let async_run = world.resource(async_run()).clone();
+                    world.resource(runtime()).spawn(async move {
+                        match PbrMaterialFromUrl(url).get(&assets).await {
+                            Err(err) => {
+                                log::warn!("Failed to load pbr material from url: {:?}", err);
+                            }
+                            Ok(mat) => {
+                                async_run.run(move |world| {
+                                    world
+                                        .add_components(
+                                            id,
+                                            Entity::new()
+                                                .with(renderer_shader(), cb(pbr_material::get_pbr_shader))
+                                                .with(material(), mat.into()),
+                                        )
+                                        .ok();
+                                });
+                            }
+                        }
+                    });
+                }
+            }),
             query_mut((primitives(),), (renderer_shader().changed(), material().changed(), mesh().changed())).to_system(
                 |q, world, qs, _| {
                     for (_, (primitives,), (shader, material, mesh)) in q.iter(world, qs) {
@@ -247,14 +288,15 @@ where
 
 /// No bind groups
 pub fn get_defs_module(_: &AssetCache) -> ShaderModule {
-    ShaderModule::from_str(
-        "Definitions",
-        [("PI", PI)]
-            .iter()
-            .map(|(k, v)| format!("let {k}: f32 = {v};\n"))
-            .chain([wgsl_interpolate(), include_file!("polyfill.wgsl"), MESH_BUFFER_TYPES_WGSL.to_string()])
-            .collect::<String>(),
-    )
+    let iter = [("PI", PI)].iter();
+    #[cfg(not(target_os = "unknown"))]
+    let iter = iter.map(|(k, v)| format!("let {k}: f32 = {v};\n"));
+    #[cfg(target_os = "unknown")]
+    let iter = iter.map(|(k, v)| format!("const {k}: f32 = {v};\n"));
+
+    let iter = iter.chain([wgsl_interpolate(), include_file!("polyfill.wgsl")]).collect::<String>();
+
+    ShaderModule::from_str("Definitions", iter)
 }
 
 pub fn get_resources_module() -> ShaderModule {
@@ -304,8 +346,9 @@ pub fn get_globals_module(_assets: &AssetCache, shadow_cascades: u32) -> ShaderM
     )
 }
 
-pub fn get_forward_module(assets: &AssetCache, shadow_cascades: u32) -> ShaderModule {
+pub fn get_forward_modules(assets: &AssetCache, shadow_cascades: u32) -> [ShaderModule; 7] {
     [
+        get_mesh_buffer_types(),
         get_defs_module(assets),
         get_resources_module(),
         get_globals_module(assets, shadow_cascades),
@@ -313,12 +356,10 @@ pub fn get_forward_module(assets: &AssetCache, shadow_cascades: u32) -> ShaderMo
         get_common_module(assets),
         get_mesh_buffer_types(),
     ]
-    .iter()
-    .collect()
 }
 
-pub fn get_overlay_module(assets: &AssetCache, shadow_cascades: u32) -> ShaderModule {
-    [get_defs_module(assets), get_globals_module(assets, shadow_cascades)].iter().collect()
+pub fn get_overlay_modules(assets: &AssetCache, shadow_cascades: u32) -> [ShaderModule; 3] {
+    [get_mesh_buffer_types(), get_defs_module(assets), get_globals_module(assets, shadow_cascades)]
 }
 
 pub struct MaterialShader {
@@ -326,7 +367,7 @@ pub struct MaterialShader {
     pub shader: ShaderModule,
 }
 
-pub trait Material: std::fmt::Debug + Sync + Send + DowncastSync {
+pub trait Material: Debug + Sync + Send + DowncastSync {
     fn id(&self) -> &str;
     fn name(&self) -> &str {
         self.id()
@@ -395,7 +436,7 @@ impl RendererShader {
         }
     }
 }
-impl std::fmt::Debug for RendererShader {
+impl Debug for RendererShader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RendererShader").field("id", &self.id).finish()
     }

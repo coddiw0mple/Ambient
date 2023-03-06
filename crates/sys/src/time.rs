@@ -1,9 +1,7 @@
 use std::time::Duration;
 
 use crate::platform;
-pub use crate::platform::time::Interval;
-
-pub use platform::time::{schedule_wakeup, Instant};
+pub use platform::time::{schedule_wakeup, Instant, Interval, SystemTime};
 
 pub async fn sleep(duration: Duration) {
     platform::time::sleep(duration).await
