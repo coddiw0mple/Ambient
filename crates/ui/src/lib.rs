@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use ambient_core::{hierarchy::children, transform::*, window::WindowCtl, window_ctl};
+use ambient_core::{hierarchy::children, transform::*, window::window_ctl, window::WindowCtl};
 pub use ambient_ecs::{EntityId, SystemGroup, World};
 pub use ambient_editor_derive::ElementEditor;
 pub use ambient_element as element;
@@ -78,7 +78,7 @@ pub fn init_all_componets() {
 pub fn systems() -> SystemGroup {
     SystemGroup::new(
         "ui",
-        vec![Box::new(rect::systems()), Box::new(text::systems()), Box::new(layout::layout_systems()), Box::new(screens::systems())],
+        vec![Box::new(rect::systems()), Box::new(text::systems(true)), Box::new(layout::layout_systems()), Box::new(screens::systems())],
     )
 }
 
