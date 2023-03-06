@@ -7,7 +7,7 @@ commands = [ "cargo run --example main -p generate-docs", "cargo run -- update-i
 paths = ["Cargo.toml", "guest/rust/Cargo.toml"]
 
 [unix]
-commands = [""./scripts/run_all_examples.sh]
+commands = ["./scripts/run_all_examples.sh"]
 
 [win]
 commands = []
