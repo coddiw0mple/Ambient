@@ -1,0 +1,16 @@
+version = "0.1.1"
+
+[cli]
+commands = [ "cargo run --example main -p generate-docs", "cargo run -- update-interface-components" ]
+
+[builds]
+paths = ["Cargo.toml", "guest/rust/Cargo.toml"]
+
+[unix]
+commands = [""./scripts/run_all_examples.sh]
+
+[win]
+commands = []
+
+[snr]
+paths = [ "Cargo.toml", "docs/src/installing.md", "guest/rust/Cargo.toml", "guest/rust/api/Cargo.toml" ]
