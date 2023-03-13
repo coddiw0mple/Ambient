@@ -1,20 +1,19 @@
-use ambient_ecs::{components, Debuggable, Description, MaybeResource, Name, Networked, Resource, World};
+use ambient_ecs::{components, Component, ComponentValue, Debuggable, Description, MaybeResource, Name, Networked, Resource, World};
 use ambient_std::math::interpolate;
 use glam::{uvec2, vec2, UVec2, Vec2};
 use winit::window::{CursorGrabMode, CursorIcon, Window};
 
 components!("app", {
-
     @[Resource, Name["Window Control"], Description["Allows controlling the window from afar."]]
     window_ctl: flume::Sender<WindowCtl>,
 
-    @[MaybeResource, Debuggable, Networked, Name["Window scale factor"], Description["This number is usually 1, but on for instance retina displays it's 2."]]
+    @[MaybeResource, Debuggable, Networked, Name["Window scale factor"], Description["The DPI/pixel scale factor of the window.\nOn standard displays, this is 1, but it can be higher on high-DPI displays like Apple Retina displays."]]
     window_scale_factor: f64,
     @[MaybeResource, Debuggable, Networked, Name["Window logical size"], Description["The logical size is the physical size divided by the scale factor."]]
     window_logical_size: UVec2,
     @[MaybeResource, Debuggable, Networked, Name["Window physical size"], Description["The physical size is the actual number of pixels on the screen."]]
     window_physical_size: UVec2,
-    @[MaybeResource, Debuggable, Networked, Name["Cursor position"], Description["Absolute mouse cursor position in screen space."]]
+    @[MaybeResource, Debuggable, Networked, Name["Cursor position"], Description["Absolute mouse cursor position in screen-space."]]
     cursor_position: Vec2,
 });
 
@@ -34,13 +33,18 @@ pub fn get_window_sizes(window: &Window) -> (UVec2, UVec2, f64) {
 }
 
 pub fn mirror_window_components(src: &mut World, dst: &mut World) {
-    let dr = dst.resource_entity();
+    fn t<T>(src: &mut World, dst: &mut World, component: Component<T>)
+    where
+        T: ComponentValue + std::fmt::Debug + Copy + PartialEq,
+    {
+        let val = *src.resource(component);
+        dst.set_if_changed(dst.resource_entity(), component, val).unwrap();
+    }
 
-    dst.set_if_changed(dr, window_physical_size(), *src.resource(window_physical_size())).unwrap();
-    dst.set_if_changed(dr, window_logical_size(), *src.resource(window_logical_size())).unwrap();
-    dst.set_if_changed(dr, window_scale_factor(), *src.resource(window_scale_factor())).unwrap();
-
-    dst.set_if_changed(dr, cursor_position(), *src.resource(cursor_position())).unwrap();
+    t(src, dst, window_physical_size());
+    t(src, dst, window_logical_size());
+    t(src, dst, window_scale_factor());
+    t(src, dst, cursor_position());
 }
 
 /// Allows controlling the window

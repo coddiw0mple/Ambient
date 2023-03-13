@@ -10,24 +10,26 @@ use ambient_network::{
     client::{GameClient, GameClientNetworkStats, GameClientRenderTarget, GameClientServerStats, GameClientView, UseOnce},
     events::ServerEventRegistry,
 };
+use ambient_renderer::RenderTarget;
 use ambient_std::{asset_cache::AssetCache, cb, friendly_id};
 use ambient_ui::{use_window_physical_resolution, Dock, FocusRoot, StylesExt, Text, WindowSized};
+use glam::uvec2;
 
 use crate::{cli::RunCli, shared};
-use ambient_renderer::RenderTarget;
-use glam::uvec2;
 
 /// Construct an app and enter the main client view
 pub async fn run(assets: AssetCache, server_addr: SocketAddr, run: &RunCli, project_path: Option<PathBuf>) {
     let user_id = run.user_id.clone().unwrap_or_else(|| format!("user_{}", friendly_id()));
     let headless = if run.headless { Some(uvec2(400, 400)) } else { None };
 
-    AppBuilder::simple()
+    let is_debug = std::env::var("AMBIENT_DEBUGGER").is_ok() || run.debugger;
+
+    AppBuilder::new()
         .ui_renderer(true)
         .with_asset_cache(assets)
         .headless(headless)
         .run(move |app, _runtime| {
-            MainApp { server_addr, user_id, show_debug: run.debug, screenshot_test: run.screenshot_test, project_path }
+            MainApp { server_addr, user_id, show_debug: is_debug, screenshot_test: run.screenshot_test, project_path }
                 .el()
                 .spawn_interactive(&mut app.world);
         })

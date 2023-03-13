@@ -13,6 +13,7 @@ ambient_ecs = { path = "../ecs" }
 ambient_gpu = { path = "../gpu" }
 ambient_core = { path = "../core" }
 ambient_meshes = { path = "../meshes" }
+ambient_color = { path = "../../libs/color", features = ["wgpu"] }
 wgpu = { workspace = true }
 glam = { workspace = true }
 itertools = { workspace = true }
@@ -27,6 +28,7 @@ log = { workspace = true }
 parking_lot = { workspace = true }
 async-trait = { workspace = true }
 anyhow = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 ambient_app = { path = "../app" }

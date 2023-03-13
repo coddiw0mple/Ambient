@@ -12,10 +12,7 @@ use ambient_core::{
     hierarchy::dump_world_hierarchy_to_tmp_file,
     remove_at_time_system, runtime, time,
     transform::TransformSystem,
-    window::cursor_position,
-    window::get_window_sizes,
-    window::WindowCtl,
-    window::{window_logical_size, window_physical_size, window_scale_factor},
+    window::{cursor_position, get_window_sizes, window_logical_size, window_physical_size, window_scale_factor, WindowCtl},
     RuntimeKey, TimeResourcesSystem,
 };
 use ambient_ecs::{
@@ -65,8 +62,8 @@ pub fn init_all_components() {
     ambient_gizmos::init_components();
     ambient_cameras::init_all_components();
     init_components();
-    ambient_renderer::init_all_componets();
-    ambient_ui::init_all_componets();
+    ambient_renderer::init_all_components();
+    ambient_ui::init_all_components();
     ambient_input::init_all_components();
     ambient_model::init_components();
     ambient_cameras::init_all_components();
@@ -555,7 +552,8 @@ impl App {
 
                     let size = uvec2(size.width, size.height);
                     if let Some(window) = &self.window {
-                        let logical_size = (size.as_dvec2() * window.scale_factor()).as_uvec2();
+                        let scale_factor = window.scale_factor();
+                        let logical_size = (size.as_dvec2() / scale_factor).as_uvec2();
 
                         world.set_if_changed(world.resource_entity(), window_physical_size(), size).unwrap();
                         world.set_if_changed(world.resource_entity(), window_logical_size(), logical_size).unwrap();

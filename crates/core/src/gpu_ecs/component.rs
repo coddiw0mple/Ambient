@@ -22,43 +22,47 @@ pub struct GpuComponent {
 pub enum GpuComponentFormat {
     Mat4,
     Vec4,
-    UVec4,
-    U32,
+    // UVec4,
+    // U32,
     UVec4Array20,
-    F32Array20,
-    U32Array20,
+    // F32Array20,
+    // U32Array20,
 }
 impl GpuComponentFormat {
     pub fn size(&self) -> u64 {
         match self {
             GpuComponentFormat::Mat4 => std::mem::size_of::<Mat4>() as u64,
             GpuComponentFormat::Vec4 => std::mem::size_of::<Vec4>() as u64,
-            GpuComponentFormat::UVec4 => std::mem::size_of::<UVec4>() as u64,
-            GpuComponentFormat::U32 => std::mem::size_of::<u32>() as u64,
+            //GpuComponentFormat::UVec4 => std::mem::size_of::<UVec4>() as u64,
+            // GpuComponentFormat::U32 => std::mem::size_of::<u32>() as u64,
             GpuComponentFormat::UVec4Array20 => std::mem::size_of::<UVec4>() as u64 * 20,
-            GpuComponentFormat::F32Array20 => std::mem::size_of::<f32>() as u64 * 20,
-            GpuComponentFormat::U32Array20 => std::mem::size_of::<u32>() as u64 * 20,
+            //GpuComponentFormat::F32Array20 => std::mem::size_of::<f32>() as u64 * 20,
+            //GpuComponentFormat::U32Array20 => std::mem::size_of::<u32>() as u64 * 20,
         }
     }
     pub fn wgsl(&self) -> &'static str {
         match self {
             GpuComponentFormat::Mat4 => "mat4x4<f32>",
             GpuComponentFormat::Vec4 => "vec4<f32>",
-            GpuComponentFormat::UVec4 => "vec4<u32>",
-            GpuComponentFormat::U32 => "u32",
+            // GpuComponentFormat::UVec4 => "vec4<u32>",
+            // GpuComponentFormat::U32 => "u32",
             GpuComponentFormat::UVec4Array20 => "array<vec4<u32>, 20>",
-            GpuComponentFormat::F32Array20 => "array<f32, 20>",
-            GpuComponentFormat::U32Array20 => "array<u32, 20>",
+            // GpuComponentFormat::F32Array20 => "array<f32, 20>",
+            // GpuComponentFormat::U32Array20 => "array<u32, 20>",
         }
     }
 }
 
+/// Generates the wgsl for buffers storing the component type
 #[derive(Clone, Debug)]
 pub struct GpuComponentsConfig {
+    /// The primitive type of the component
     pub format: GpuComponentFormat,
+    /// The set of components which share the same type which will coexist in the same buffer, using `MultiBuffer`
     pub components: Vec<GpuComponent>,
     pub components_before_this: usize,
 }
+
 impl GpuComponentsConfig {
     pub fn new(format: GpuComponentFormat) -> Self {
         Self { format, components: Vec::new(), components_before_this: 0 }
@@ -66,6 +70,8 @@ impl GpuComponentsConfig {
     pub fn layout_offset(&self, archetypes: usize) -> usize {
         1 + self.components_before_this * archetypes
     }
+
+    /// Generate bindings for accessing this gpu component type in the specified `bind_group` and `buffer_index`
     fn wgsl(&self, bind_group: &str, buffer_index: u32, writeable: bool) -> String {
         format!(
             "
@@ -121,52 +127,73 @@ fn set_entity_data_{format_name}(component_index: u32, entity_loc: vec2<u32>, va
                 .components
                 .iter()
                 .enumerate()
-                .map(|(i, comp)| format!(
-                    "
+                .map(
+                    |(i, comp)| {
+                        let offset = i;
+                        let ident = &comp.name;
+                        let format = comp.format;
+                        let ty = comp.format.wgsl();
 
-fn get_entity_{comp}(entity_loc: vec2<u32>) -> {wgsl_format} {{
-    return get_entity_data_{name}({offset}u, entity_loc);
-}}
-fn get_entity_{comp}_or(entity_loc: vec2<u32>, default_value: {wgsl_format}) -> {wgsl_format} {{
-    return get_entity_data_or_{name}({offset}u, entity_loc, default_value);
-}}
-fn has_entity_{comp}(entity_loc: vec2<u32>) -> bool {{
-    return get_entity_component_offset_{name}({offset}u, entity_loc) >= 0;
-}}
-
-{set_entity}
-",
-                    comp = comp.name,
-                    offset = i,
-                    name = self.format,
-                    wgsl_format = self.format.wgsl(),
-                    set_entity = if writeable {
-                        format!(
+                        let getters = format!(
                             "
-
-fn set_entity_{comp}(entity_loc: vec2<u32>, value: {wgsl_format}) {{
-    set_entity_data_{name}({offset}u, entity_loc, value);
+fn get_entity_{ident}(entity_loc: vec2<u32>) -> {ty} {{
+    return get_entity_data_{format}({offset}u, entity_loc);
 }}
 
-                    ",
-                            comp = comp.name,
-                            offset = i,
-                            name = self.format,
-                            wgsl_format = self.format.wgsl(),
-                        )
-                    } else {
-                        String::new()
-                    }
-                ))
+fn get_entity_{ident}_or(entity_loc: vec2<u32>, default_value: {ty}) -> {ty} {{
+    return get_entity_data_or_{format}({offset}u, entity_loc, default_value);
+}}
+
+fn has_entity_{ident}(entity_loc: vec2<u32>) -> bool {{
+    return get_entity_component_offset_{format}({offset}u, entity_loc) >= 0;
+}}
+"
+                        );
+                        let setters = if writeable {
+                            format!(
+                                "
+fn set_entity_{ident}(entity_loc: vec2<u32>, value: {ty}) {{
+set_entity_data_{format}({offset}u, entity_loc, value);
+}}
+"
+                            )
+                        } else {
+                            String::new()
+                        };
+
+                        [getters, setters].join("\n")
+                    } //                     // comp = comp.name,
+                      //                     // offset = i,
+                      //                     // name = self.format,
+                      //                     // wgsl_format = self.format.wgsl(),
+                      //                     set_entity = if writeable {
+                      //                         format!(
+                      //                             "
+
+                      // fn set_entity_{comp}(entity_loc: vec2<u32>, value: {wgsl_format}) {{
+                      //     set_entity_data_{name}({offset}u, entity_loc, value);
+                      // }}
+
+                      //                     ",
+                      //                             offset = i,
+                      //                             name = self.format,
+                      //                             wgsl_format = self.format.wgsl(),
+                      //                         )
+                      //                     } else {
+                      //                         String::new()
+                      //                     }
+                )
                 .join("")
         )
     }
 }
 
+/// Generates the wgsl code for the gpu ecs storage bindings and access functions.
 #[derive(Clone, Debug)]
 pub struct GpuWorldConfig {
     pub buffers: Vec<GpuComponentsConfig>,
 }
+
 impl GpuWorldConfig {
     pub fn new(mut buffers: Vec<GpuComponentsConfig>) -> Self {
         let mut comps = 0;
@@ -177,18 +204,16 @@ impl GpuWorldConfig {
         Self { buffers }
     }
     pub fn wgsl(&self, writeable: bool) -> String {
+        let buffers = self.buffers.iter().enumerate().map(|(i, buf)| buf.wgsl(ENTITIES_BIND_GROUP, i as u32, writeable)).join("\n");
         format!(
             "
-
 struct EntityLayoutBuffer {{ data: array<i32>, }};
-@group(#{bind_group})
+@group(#{ENTITIES_BIND_GROUP})
 @binding(0)
 var<storage> entity_layout: EntityLayoutBuffer;
 
 {buffers}
 ",
-            bind_group = ENTITIES_BIND_GROUP,
-            buffers = self.buffers.iter().enumerate().map(|(i, buf)| buf.wgsl(ENTITIES_BIND_GROUP, i as u32, writeable)).join("\n")
         )
     }
 }

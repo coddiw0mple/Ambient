@@ -1,8 +1,9 @@
-use std::{num::NonZeroU32, ops::Deref, sync::Arc};
+use std::{num::NonZeroU32, ops::Deref, str::FromStr, sync::Arc};
 
 use ambient_core::{asset_cache, async_ecs::async_run, gpu, mesh, runtime, transform::*, window::window_scale_factor};
-use ambient_ecs::{components, query, query_mut, Debuggable, Description, Entity, Name, Networked, Store, SystemGroup};
+use ambient_ecs::{components, query, Debuggable, Description, Entity, Name, Networked, Store, SystemGroup};
 use ambient_gpu::{mesh_buffer::GpuMesh, texture::Texture};
+use ambient_layout::{height, min_height, min_width, width};
 use ambient_renderer::{gpu_primitives, material, primitives, renderer_shader, SharedMaterial};
 use ambient_std::{
     asset_cache::{AssetCache, AsyncAssetKey, AsyncAssetKeyExt},
@@ -11,6 +12,7 @@ use ambient_std::{
     download_asset::{AssetResult, BytesFromUrl},
     mesh::*,
     shapes::AABB,
+    unwrap_log_warn,
 };
 use anyhow::Context;
 use async_trait::async_trait;
@@ -23,17 +25,20 @@ use log::info;
 use parking_lot::Mutex;
 
 use crate::text_material::{get_text_shader, TextMaterial};
-use ambient_layout::{height, min_height, min_width, width};
+use strum::EnumString;
 
 mod text_material;
 
 components!("ui", {
     @[Debuggable, Networked, Store, Name["Text"], Description["Create a text mesh on this entity."]]
     text: String,
+    @[Debuggable]
     text_case: TextCase,
     @[Debuggable, Networked, Store, Name["Font size"], Description["Size of the font."]]
     font_size: f32,
-    font_style: FontStyle,
+    @[Debuggable, Networked, Store, Name["Font style"], Description["One of Bold, BoldItalic, Medium, MediumItalic, Regular, Italic, Light or LightItalic."]]
+    font_style: String,
+    @[Debuggable]
     font_family: FontFamily,
     font_arc: Arc<FontArc>,
 
@@ -63,7 +68,7 @@ impl TextCase {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumString)]
 pub enum FontStyle {
     Bold,
     BoldItalic,
@@ -164,7 +169,7 @@ pub fn systems(use_gpu: bool) -> SystemGroup {
             }),
             query(text()).excl(font_style()).to_system(|q, world, qs, _| {
                 for (id, _) in q.collect_cloned(world, qs) {
-                    world.add_component(id, font_style(), FontStyle::Regular).unwrap();
+                    world.add_component(id, font_style(), format!("{:?}", FontStyle::Regular)).unwrap();
                 }
             }),
             query(text()).excl(font_size()).to_system(|q, world, qs, _| {
@@ -210,7 +215,7 @@ pub fn systems(use_gpu: bool) -> SystemGroup {
                     let async_run = world.resource(async_run()).clone();
                     let assets = world.resource(asset_cache()).clone();
                     world.resource(runtime()).spawn(async move {
-                        let font = FontDef(font_family, font_style).get(&assets).await;
+                        let font = FontDef(font_family, unwrap_log_warn!(FontStyle::from_str(&font_style))).get(&assets).await;
                         async_run.run(move |world| {
                             world.add_component(id, font_arc(), font).ok();
                         });
@@ -223,15 +228,10 @@ pub fn systems(use_gpu: bool) -> SystemGroup {
                     world.add_component(id, glyph_brush(), brush).unwrap();
                 }
             }),
-            query(window_scale_factor().changed()).to_system(|q, world, qs, _| {
-                let scale_factor = match q.iter(world, qs).next() {
-                    Some((_, wsf)) => *wsf as f32,
-                    None => return,
-                };
-
-                // Mark all glyph brushes as dirty to ensure they're rebuilt when the scale factor changes.
-                for (_, (mesh_to_local, _), _) in query_mut((mesh_to_local(), glyph_brush()), ()).iter(world, None) {
-                    *mesh_to_local = Mat4::from_scale(Vec3::ONE / scale_factor);
+            query(()).incl(mesh_to_local()).incl(text()).to_system(|q, world, qs, _| {
+                let scale_factor = world.resource_opt(window_scale_factor()).cloned().unwrap_or(1.) as f32;
+                for (id, _) in q.collect_cloned(world, qs) {
+                    world.set_if_changed(id, mesh_to_local(), Mat4::from_scale(Vec3::ONE / scale_factor)).unwrap();
                 }
             }),
             {
@@ -333,13 +333,6 @@ pub fn systems(use_gpu: bool) -> SystemGroup {
                                     .unwrap();
                             }
                         }
-                    }
-                }
-            }),
-            query(window_scale_factor().changed()).to_system(|q, world, qs, _| {
-                if let Some((_, scale_factor)) = q.collect_cloned(world, qs).first() {
-                    for (id, _) in query(()).incl(text()).collect_cloned(world, None) {
-                        world.add_component(id, mesh_to_local(), Mat4::from_scale(Vec3::ONE / (*scale_factor as f32))).unwrap();
                     }
                 }
             }),
